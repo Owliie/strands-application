@@ -2,8 +2,9 @@
 pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/interfaces/IERC20.sol";
+import "./ITokenTransferer.sol";
 
-contract TokenTransferer {
+contract TokenTransferer is ITokenTransferer {
     function transferToken(
         address tokenAddress,
         address recipient,
