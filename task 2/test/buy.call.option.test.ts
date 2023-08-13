@@ -1,12 +1,12 @@
-import { ethers, run } from "hardhat";
+import { ethers } from "hardhat";
 import { expect } from "chai";
-import { TestSystem, lyraEvm, lyraConstants, lyraUtils } from '@lyrafinance/protocol'
+import { TestSystem, lyraEvm, lyraConstants, lyraUtils, TestSystemContractsType } from '@lyrafinance/protocol'
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
 let signer: SignerWithAddress;
 
-describe('Integration Test', () => {
-    let testSystem: any
+describe('Lyra test system', () => {
+    let testSystem: TestSystemContractsType
 
     beforeEach(async () => {
         const signers = await ethers.getSigners()
@@ -16,7 +16,7 @@ describe('Integration Test', () => {
         await TestSystem.seed(signer, testSystem);
     })
 
-    it('will pay out long calls', async () => {
+    it('Should buy long call', async () => {
         const boardIds = await testSystem.optionMarket.getLiveBoards();
         const strikeIds = await testSystem.optionMarket.getBoardStrikes(boardIds[0]);
 
@@ -38,11 +38,11 @@ describe('Integration Test', () => {
         await testSystem.snx.exchangeRates.setRateAndInvalid(lyraUtils.toBytes32('sETH'), lyraUtils.toBN('2300'), false);
 
         await testSystem.optionMarket.settleExpiredBoard(boardIds[0]);
-        expect(await testSystem.liquidityPool.totalOutstandingSettlements()).to.eq(lyraUtils.toBN('800'));
+        expect(await testSystem.liquidityPool.totalOutstandingSettlements()).to.be.equal(lyraUtils.toBN('800'));
 
         const preBalance = await testSystem.snx.quoteAsset.balanceOf(signer.address);
         await testSystem.shortCollateral.settleOptions([strikeIds[0]]);
         const postBalance = await testSystem.snx.quoteAsset.balanceOf(signer.address);
-        expect(postBalance.sub(preBalance)).to.eq(lyraUtils.toBN('800'));
+        expect(postBalance.sub(preBalance)).to.be.equal(lyraUtils.toBN('800'));
     });
 }); 
