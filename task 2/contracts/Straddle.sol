@@ -2,10 +2,9 @@
 pragma solidity ^0.8.9;
 
 import {LyraAdapter} from "@lyrafinance/protocol/contracts/periphery/LyraAdapter.sol";
+import "./interfaces/IStraddle.sol";
 
-contract Straddle is LyraAdapter {
-    constructor() LyraAdapter() {}
-
+contract Straddle is LyraAdapter, IStraddle {
     function init(
         address _lyraRegistry,
         address _optionMarket,
@@ -17,17 +16,11 @@ contract Straddle is LyraAdapter {
 
     function buyStraddle(
         uint256 size,
-        uint256 strikeId
-    ) external returns (uint256, uint256) {
-        uint256 balance = quoteAsset.balanceOf(address(this));
-
-        quoteAsset.transferFrom(
-            msg.sender,
-            address(this),
-            quoteAsset.balanceOf(msg.sender)
-        );
-
-        quoteAsset.approve(address(optionMarket), type(uint).max);
+        uint256 strikeId,
+        uint256 maxCost
+    ) external returns (uint256, uint256, uint256) {
+        quoteAsset.transferFrom(msg.sender, address(this), maxCost);
+        quoteAsset.approve(address(optionMarket), maxCost);
 
         TradeInputParameters memory params = TradeInputParameters(
             strikeId, // strikeId
@@ -47,11 +40,11 @@ contract Straddle is LyraAdapter {
 
         TradeResult memory putResult = _openPosition(params);
 
-        quoteAsset.transfer(
-            msg.sender,
-            quoteAsset.balanceOf(address(this)) - balance
-        );
+        // used for calculating the cost of the straddle
+        uint256 totalCost = callResult.totalCost + putResult.totalCost;
 
-        return (callResult.positionId, putResult.positionId);
+        quoteAsset.transfer(msg.sender, maxCost - totalCost);
+
+        return (callResult.positionId, putResult.positionId, totalCost);
     }
 }

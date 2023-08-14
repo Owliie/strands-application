@@ -41,9 +41,13 @@ describe('Straddle', () => {
         const straddleBalanceBefore = await testSystem.snx.quoteAsset.balanceOf(straddle.address);
 
         const amount = lyraUtils.toBN('1');
-        await testSystem.snx.quoteAsset.approve(straddle.address, testSystem.snx.quoteAsset.balanceOf(signer.address));
 
-        const tx = await straddle.buyStraddle(amount, strike.id)
+        await testSystem.snx.quoteAsset.approve(straddle.address, userBalanceBefore);
+        const res = await straddle.callStatic.buyStraddle(amount, strike.id, userBalanceBefore)
+        // give an increase of the totalCost by 0.1%
+        const maxCost = res[2].mul(11).div(10)
+
+        const tx = await straddle.buyStraddle(amount, strike.id, maxCost)
         const receipt = await tx.wait()
 
         const userBalanceAfter = await testSystem.snx.quoteAsset.balanceOf(signer.address);
@@ -89,9 +93,13 @@ describe('Straddle', () => {
         const straddleBalanceBefore = await testSystem.snx.quoteAsset.balanceOf(straddle.address);
 
         const amount = lyraUtils.toBN('1');
-        await testSystem.snx.quoteAsset.approve(straddle.address, testSystem.snx.quoteAsset.balanceOf(signer.address));
 
-        const tx = await straddle.buyStraddle(amount, strike.id)
+        await testSystem.snx.quoteAsset.approve(straddle.address, userBalanceBefore);
+        const res = await straddle.callStatic.buyStraddle(amount, strike.id, userBalanceBefore)
+        // give an increase of the totalCost by 0.1%
+        const maxCost = res[2].mul(11).div(10)
+
+        const tx = await straddle.buyStraddle(amount, strike.id, maxCost)
         const receipt = await tx.wait()
 
         const userBalanceAfter = await testSystem.snx.quoteAsset.balanceOf(signer.address);
@@ -124,5 +132,66 @@ describe('Straddle', () => {
         await testSystem.shortCollateral.settleOptions([strikeIds[0]]);
         const postBalance = await testSystem.snx.quoteAsset.balanceOf(signer.address);
         expect(postBalance.sub(preBalance)).to.be.equal(0);
+    });
+
+    it('Should buy straddle without restricted total cost', async () => {
+        const boardIds = await testSystem.optionMarket.getLiveBoards();
+        const strikeIds = await testSystem.optionMarket.getBoardStrikes(boardIds[0]);
+
+        const strike = await testSystem.optionMarket.getStrike(strikeIds[0]);
+        expect(strike.strikePrice).eq(lyraUtils.toBN('1500'));
+
+        const userBalanceBefore = await testSystem.snx.quoteAsset.balanceOf(signer.address);
+        const straddleBalanceBefore = await testSystem.snx.quoteAsset.balanceOf(straddle.address);
+
+        const amount = lyraUtils.toBN('1');
+        await testSystem.snx.quoteAsset.approve(straddle.address, userBalanceBefore);
+
+        const tx = await straddle.buyStraddle(amount, strike.id, userBalanceBefore)
+        const receipt = await tx.wait()
+
+        const userBalanceAfter = await testSystem.snx.quoteAsset.balanceOf(signer.address);
+        const straddleBalanceAfter = await testSystem.snx.quoteAsset.balanceOf(straddle.address);
+
+        const events = await getEvents(
+            ethers.provider,
+            testSystem.optionMarket,
+            {
+                Trade: ['trade']
+            },
+            receipt.blockNumber,
+            receipt.blockNumber
+        );
+
+        const callEventTotalCost = events[0]['Trade'].trade[9]
+        const putEventTotalCost = events[1]['Trade'].trade[9]
+
+        expect(userBalanceBefore.sub(userBalanceAfter)).to.be.equal(callEventTotalCost.add(putEventTotalCost))
+        expect(straddleBalanceBefore).to.be.equal(straddleBalanceAfter)
+        expect(straddleBalanceBefore).to.be.equal(0)
+
+        await lyraEvm.fastForward(lyraConstants.MONTH_SEC);
+        await testSystem.snx.exchangeRates.setRateAndInvalid(lyraUtils.toBytes32('sETH'), lyraUtils.toBN('1200'), false);
+
+        await testSystem.optionMarket.settleExpiredBoard(boardIds[0]);
+        expect(await testSystem.liquidityPool.totalOutstandingSettlements()).to.be.equal(lyraUtils.toBN('300'));
+
+        const preBalance = await testSystem.snx.quoteAsset.balanceOf(signer.address);
+        await testSystem.shortCollateral.settleOptions([strikeIds[0]]);
+        const postBalance = await testSystem.snx.quoteAsset.balanceOf(signer.address);
+        expect(postBalance.sub(preBalance)).to.be.equal(0);
+    });
+
+    it('Should revert if total cost exceeded', async () => {
+        const boardIds = await testSystem.optionMarket.getLiveBoards();
+        const strikeIds = await testSystem.optionMarket.getBoardStrikes(boardIds[0]);
+
+        const strike = await testSystem.optionMarket.getStrike(strikeIds[0]);
+        expect(strike.strikePrice).eq(lyraUtils.toBN('1500'));
+
+        const amount = lyraUtils.toBN('1');
+        await testSystem.snx.quoteAsset.approve(straddle.address, testSystem.snx.quoteAsset.balanceOf(signer.address));
+
+        await expect(straddle.buyStraddle(amount, strike.id, lyraUtils.toBN('1'))).to.be.revertedWith('ERC20: transfer amount exceeds balance');
     });
 }); 
